@@ -37,6 +37,7 @@ class GravityUser(FastHttpUser):
                 if not response.ok:
                     return
                 sessionID = response.json()["sessionID"]
+                print(sessionID)
 
                 with self.client.post("/gravitydata", totalMass=1, ratioMass=1, sessionID=sessionID) as retrieved_data:
                     js = retrieved_data.json()
@@ -59,5 +60,5 @@ class GravityUser(FastHttpUser):
                     # print("image saved")
                     pass
 
-    host = "http://127.0.0.1:8000/"
-    wait_time = constant(10)
+    host = "http://127.0.0.1:5000/"
+    wait_time = constant(1)

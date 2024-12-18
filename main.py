@@ -7,6 +7,7 @@ import traceback
 from os import error
 
 from pycbc.types.timeseries import TimeSeries
+from pycbc.filter import resample_to_delta_t, highpass
 
 from tempfile import mkdtemp
 from shutil import rmtree
@@ -32,9 +33,15 @@ api.config['CACHE_TYPE'] = 'redis'
 api.config['CACHE_REDIS_HOST'] = 'localhost'
 api.config['CACHE_REDIS_PORT'] = 6379
 cache = Cache(api)
-#Caching funtion to speed up duplicate requests
+#Caching funtions to speed up duplicate requests
 def make_key():
-    return request.args["filename"]
+    return request.args["sessionID"]
+
+def make_whitened_key():
+    pass
+
+def make_bandpassed_key():
+    pass
 
 r = redis.StrictRedis(host='localhost', port=6379, db=0)
 DATA_EXPIRATION = 86400
@@ -88,14 +95,15 @@ def get_gravdata():
         # data = request.get_json()
         mass_ratio = float(request.args['ratioMass'])
         total_mass = float(request.args['totalMass'])
+        phase_mass = float(request.args["phaseMass"])
         session_id = request.args['sessionID']
 
-        data = r.get(session_id)
-        if data:
-            data = pickle.loads(data)
+        if r.exists(session_id):
+            print(session_id)
+            data = pickle.loads(r.get(session_id))
             
 
-            fband = find_bandpass_range(mass_ratio, total_mass)
+            fband = find_bandpass_range(mass_ratio, total_mass, phase_mass)
             strain_whiten = data['whitenedStrain']
             timeData = data['time']
             last_access_time = data['last_access_time']
@@ -123,9 +131,12 @@ def get_gravity():
     try:
         mass_ratio = float(request.args['ratioMass'])
         total_mass = float(request.args['totalMass'])
-        data = find_strain_model_data(mass_ratio, total_mass)
+        phase_mass = float(request.args["phaseStrain"])
+        mass_ratioStrain = float(request.args['ratioMassStrain'])
+        total_massStrain = float(request.args['totalMassStrain'])
+        data = find_strain_model_data(mass_ratioStrain, total_massStrain, phase_mass)
         for i in range(len(data)):
-            data[i][1] = data[i][1] * 10**18
+            data[i][1] = data[i][1] * 10**22.805
         return json.dumps({'strain_model': data, 'freq_model': find_frequency_model_data(mass_ratio, total_mass)})
     except Exception as e:
         return json.dumps({'err': str(e), 'log': traceback.format_tb(e.__traceback__)})
@@ -136,9 +147,10 @@ def get_gravity():
 def upload_process_gravdata():
     tempdir = mkdtemp()
     try:
-        # Generate a unique identifier for the user's session or data session
+        # Generate a unique identifier for the submitted data; supplied to other users uploading the same data
         session_id = str(uuid.uuid4())
-        # print('ID : ', session_id)
+        print('ID : ', session_id)
+        
         if request.args['default_set'] == 'true':
             strain_whiten, timeData, PSD, rawTimeseries, timeOfRecord, timeZero = get_data_from_file(
             './gravity-model-data/default-set/GW150914.hdf5'
@@ -206,7 +218,7 @@ def upload_process_gravdata():
 
 
 @api.route("/gravprofile", methods=["POST"])
-@cache.cached(timeout=60, make_cache_key=make_key)
+# @cache.cached(timeout=60, make_cache_key=make_key)
 def get_sepctrogram():
     tempdir = mkdtemp()
     try:
@@ -327,7 +339,7 @@ def cleanup_whitened_data():
 
 
 def main():
-    api.run(port=8000)
+    api.run(port=5000)
 
 if __name__ == "__main__":
     main()
